@@ -1,0 +1,54 @@
+# Render Blueprint — API + job de payouts. Los secretos se cargan en el
+# dashboard (sync: false), nunca en este archivo.
+services:
+  - type: web
+    name: educonnect-api
+    runtime: node
+    region: ohio
+    plan: standard
+    rootDir: apps/api
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    numInstances: 2
+    envVars:
+      - { key: NODE_ENV, value: production }
+      - { key: NODE_VERSION, value: '22' }
+      - { key: REDIS_URL, fromService: { type: keyvalue, name: educonnect-ratelimit, property: connectionString } }
+      - { fromGroup: educonnect-secrets }
+  - type: cron
+    name: educonnect-payouts
+    runtime: node
+    region: ohio
+    rootDir: apps/api
+    schedule: '*/15 * * * *'
+    buildCommand: npm ci && npm run build
+    startCommand: npm run job:payouts
+    envVars:
+      - { key: NODE_ENV, value: production }
+      - { key: NODE_VERSION, value: '22' }
+      - { key: REDIS_URL, fromService: { type: keyvalue, name: educonnect-ratelimit, property: connectionString } }
+      - { fromGroup: educonnect-secrets }
+
+  - type: keyvalue
+    name: educonnect-ratelimit
+    region: ohio
+    plan: starter
+    ipAllowList: [] # solo red privada de Render
+    maxmemoryPolicy: allkeys-lru
+
+envVarGroups:
+  - name: educonnect-secrets
+    envVars:
+      - { key: CORS_ORIGINS, sync: false }
+      - { key: APP_URL, sync: false }
+      - { key: SUPABASE_URL, sync: false }
+      - { key: SUPABASE_SERVICE_ROLE_KEY, sync: false }
+      - { key: STRIPE_SECRET_KEY, sync: false }
+      - { key: STRIPE_WEBHOOK_SECRET, sync: false }
+      - { key: STRIPE_CONNECT_WEBHOOK_SECRET, sync: false }
+      - { key: PLATFORM_FEE_BPS, value: '1500' }
+      - { key: DAILY_API_KEY, sync: false }
+      - { key: DAILY_DOMAIN, sync: false }
+      - { key: DAILY_WEBHOOK_HMAC, sync: false }
