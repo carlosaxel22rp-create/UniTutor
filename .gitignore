@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- EduConnect: secretos y artefactos de build ---
+.env
+.env.*
+!.env.example
+.next/
+out/
+coverage/
+*.tsbuildinfo
+supabase/.temp/
+supabase/.branches/
+*.pem

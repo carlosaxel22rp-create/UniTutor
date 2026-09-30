@@ -1,11 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
 @import 'tailwindcss';
 
-/* Tokens del diseño Figma: glassmorphism oscuro + acento naranja
-   (mismos valores que apps/web/src/app/globals.css) */
+/* Tokens del diseño Figma ("Aprendeo"): glassmorphism oscuro + acento naranja */
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-display: 'Outfit', system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-outfit), system-ui, sans-serif;
 
   --color-brand-orange: #f97316;
   --color-brand-orange-hover: #ea6c0a;
@@ -18,16 +16,11 @@
   --color-night-600: #130d35;
 }
 
-* { scrollbar-width: none; }
-*::-webkit-scrollbar { display: none; }
-
 body {
   font-family: var(--font-sans);
   background: var(--color-night-800);
   color: #fff;
 }
-
-h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
 
 .bg-app {
   background: linear-gradient(135deg, #060b1f 0%, #0d1640 40%, #130d35 70%, #060b1f 100%);
@@ -36,25 +29,15 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
 .glass {
   background: rgb(255 255 255 / 0.08);
   backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgb(255 255 255 / 0.15);
 }
 .glass-strong {
   background: rgb(255 255 255 / 0.12);
   backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
   border: 1px solid rgb(255 255 255 / 0.2);
-}
-.glass-nav {
-  background: rgb(10 15 46 / 0.6);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-bottom: 1px solid rgb(255 255 255 / 0.1);
 }
 .glass-input {
   background: rgb(255 255 255 / 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgb(255 255 255 / 0.2);
   color: #fff;
 }
@@ -64,7 +47,7 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
   border-color: rgb(249 115 22 / 0.6);
   box-shadow: 0 0 0 3px rgb(249 115 22 / 0.15);
 }
-.glass-slot { background: rgb(255 255 255 / 0.06); border: 1px solid rgb(255 255 255 / 0.12); transition: all 0.1s ease; }
+.glass-slot { background: rgb(255 255 255 / 0.06); border: 1px solid rgb(255 255 255 / 0.12); }
 .glass-slot:hover { background: rgb(255 255 255 / 0.14); border-color: rgb(249 115 22 / 0.5); }
 .glass-slot-active { background: rgb(249 115 22 / 0.3); border: 1px solid rgb(249 115 22 / 0.7); }
 
@@ -72,15 +55,5 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
   background: var(--color-brand-orange);
   color: #fff;
   box-shadow: 0 10px 15px -3px rgb(249 115 22 / 0.3);
-  transition: background 0.15s ease;
 }
 .btn-primary:hover { background: var(--color-brand-orange-hover); }
-
-/* Orbes de fondo difuminados */
-.orb {
-  position: fixed;
-  border-radius: 9999px;
-  filter: blur(80px);
-  pointer-events: none;
-  z-index: 0;
-}

@@ -1,0 +1,99 @@
+# CI de seguridad de EduConnect. Bloquea el merge a main si algo falla.
+# Recomendación: fijar cada action a un SHA de commit (no solo a la etiqueta).
+name: ci-security
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 12 * * 1' # lunes: auditoría de dependencias y DAST contra staging
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/api } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/api/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/web } }
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+      NEXT_PUBLIC_SUPABASE_URL: https://ci.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci
+      NEXT_PUBLIC_API_URL: https://api.ci.local
+      NEXT_PUBLIC_DAILY_DOMAIN: educonnect
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/web/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+      # Ningún secreto de servidor puede terminar en el bundle del navegador
+      - name: Buscar secretos en el bundle
+        run: |
+          if grep -rEl "sk_(live|test)_[A-Za-z0-9]{8,}|rk_(live|test)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|SUPABASE_SERVICE_ROLE_KEY|DAILY_API_KEY" .next/static; then
+            echo "::error::Secreto encontrado en el bundle del cliente"; exit 1
+          fi
+
+  database-rls:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar migraciones y pruebas RLS (64 casos)
+        working-directory: supabase
+        run: |
+          psql -v ON_ERROR_STOP=1 -c "create database educonnect"
+          for f in tests/00_supabase_stub.sql migrations/*.sql tests/01_rls_tests.sql tests/02_checkout_tests.sql; do
+            echo "== $f"; psql -v ON_ERROR_STOP=1 -q -d educonnect -f "$f"
+          done
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+
+  sast:
+    runs-on: ubuntu-latest
+    container: { image: semgrep/semgrep }
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config p/owasp-top-ten --config p/typescript --config p/react --config p/nodejsscan --error
+
+  dast-staging:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ vars.STAGING_URL }}
+          fail_action: true

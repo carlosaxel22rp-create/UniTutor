@@ -1,0 +1,13 @@
+process.env.LOG_LEVEL = 'silent'
+process.env.NODE_ENV = 'test'
+process.env.SUPABASE_URL = 'https://test-project.supabase.co'
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key-xxxxxxxx'
+process.env.STRIPE_SECRET_KEY = 'sk_test_dummy_key_for_tests'
+process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_platform'
+process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_test_connect'
+process.env.DAILY_API_KEY = 'daily-test-key-xxxxxxxxxxxx'
+process.env.DAILY_DOMAIN = 'educonnect'
+process.env.DAILY_WEBHOOK_HMAC = Buffer.from('super-secret-daily-hmac-key').toString('base64')
+process.env.CURRENCY = 'mxn'
+process.env.PLATFORM_FEE_BPS = '1500'
+process.env.APP_URL = 'https://educonnect.utom.edu.mx'
