@@ -1,7 +1,11 @@
-import { useState } from 'react';
-import { Search, Bell, Monitor, Utensils, Dna, TrendingUp, GraduationCap, CheckCircle2, BookOpen, Star, ArrowLeft, CalendarDays, Clock, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, Bell, Monitor, Utensils, Dna, TrendingUp, GraduationCap, CheckCircle2, BookOpen, Star, ArrowLeft, CalendarDays, Clock, User, LogOut } from 'lucide-react';
+import AuthScreen from './components/AuthScreen';
+import { getSession, onAuthStateChange, logout } from './lib/auth';
 
 function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [selectedCareer, setSelectedCareer] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -13,6 +17,45 @@ function App() {
     { id: 'bio', name: 'Biotecnología', icon: Dna },
     { id: 'mkt', name: 'Mercadotecnia', icon: TrendingUp },
   ];
+
+  useEffect(() => {
+    let subscription;
+
+    getSession().then((current) => {
+      setSession(current);
+      setAuthLoading(false);
+      subscription = onAuthStateChange(setSession);
+    });
+
+    return () => subscription?.unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0B1120] flex items-center justify-center">
+        <CheckCircle2 className="w-8 h-8 text-blue-500 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <AuthScreen careers={careers} onAuthSuccess={setSession} />;
+  }
+
+  const handleLogout = () => {
+    logout();
+    setSelectedCareer(null);
+    setSelectedSemester(null);
+    setSelectedSubject(null);
+    setSelectedTutor(null);
+  };
+
+  const userInitials = session.name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('');
 
   const semesters = [
     '1er Cuatrimestre', '2do Cuatrimestre', '3er Cuatrimestre',
@@ -200,14 +243,21 @@ function App() {
             <Bell className="w-5 h-5" />
             <span className="absolute -top-1 -right-1 bg-orange-500 w-2.5 h-2.5 rounded-full border-2 border-[#0F172A]"></span>
           </button>
-          <div className="flex items-center gap-3 cursor-pointer">
+          <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 flex items-center justify-center overflow-hidden">
-              <span className="text-sm font-bold text-white">MJ</span>
+              <span className="text-sm font-bold text-white">{userInitials}</span>
             </div>
             <div className="hidden sm:block text-sm">
-              <p className="font-semibold text-white leading-tight">María J.</p>
-              <p className="text-xs text-slate-400">Estudiante · TI</p>
+              <p className="font-semibold text-white leading-tight">{session.name}</p>
+              <p className="text-xs text-slate-400">{session.matricula}</p>
             </div>
+            <button
+              onClick={handleLogout}
+              title="Cerrar sesión"
+              className="text-slate-400 hover:text-red-400 transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </nav>
