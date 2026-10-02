@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Search, Bell, Monitor, Utensils, Dna, TrendingUp, GraduationCap, CheckCircle2, BookOpen, Star, ArrowLeft, CalendarDays, Clock, User, LogOut } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
+import FormularioSolicitudTutor from './components/FormularioSolicitudTutor';
 import { getSession, onAuthStateChange, logout } from './lib/auth';
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
   const [selectedSemester, setSelectedSemester] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedTutor, setSelectedTutor] = useState(null);
+  const [showTutorForm, setShowTutorForm] = useState(false);
 
   const careers = [
     { id: 'it', name: 'Tecnologías de la Información', icon: Monitor },
@@ -48,6 +50,7 @@ function App() {
     setSelectedSemester(null);
     setSelectedSubject(null);
     setSelectedTutor(null);
+    setShowTutorForm(false);
   };
 
   const userInitials = session.name
@@ -233,6 +236,12 @@ function App() {
         </div>
         
         <div className="flex items-center gap-6">
+          <button
+            onClick={() => setShowTutorForm(true)}
+            className="hidden sm:flex items-center gap-2 text-sm font-semibold text-slate-300 hover:text-blue-400 transition-colors"
+          >
+            <BookOpen className="w-4 h-4" /> Ser tutor
+          </button>
           <button className="relative text-slate-400 hover:text-white transition-colors">
             <Bell className="w-5 h-5" />
             <span className="absolute -top-1 -right-1 bg-orange-500 w-2.5 h-2.5 rounded-full border-2 border-[#0F172A]"></span>
@@ -257,7 +266,11 @@ function App() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
-        
+
+        {showTutorForm ? (
+          <FormularioSolicitudTutor onBack={() => setShowTutorForm(false)} />
+        ) : (
+        <>
         {/* HERO SECTION - Se oculta al seleccionar tutor */}
         {!selectedTutor && (
           <div className="mb-16 animate-fade-in">
@@ -479,6 +492,8 @@ function App() {
             )}
           </div>
         </div>
+        </>
+        )}
       </main>
     </div>
   );

@@ -188,6 +188,41 @@ create policy "El estudiante actualiza sus propias reservas"
   on public.bookings for update
   using (auth.uid() = student_id);
 
+-- ----------------------------------------------------------------------------
+-- 10. SOLICITUDES PARA SER TUTOR
+--     estudiante_id usa default auth.uid(): el cliente nunca necesita (ni puede)
+--     enviar de quién es la solicitud, Postgres la toma de la sesión autenticada.
+-- ----------------------------------------------------------------------------
+create table public.solicitudes_tutor (
+  id uuid primary key default gen_random_uuid(),
+  estudiante_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  materia_principal text not null,
+  calificacion_materia numeric(3, 1) not null
+    check (calificacion_materia >= 8.0 and calificacion_materia <= 10.0),
+  descripcion text not null,
+  disponibilidad_horaria text not null,
+  estado text not null default 'pendiente'
+    check (estado in ('pendiente', 'aprobado', 'rechazado')),
+  created_at timestamptz not null default now()
+);
+
+alter table public.solicitudes_tutor enable row level security;
+
+-- El estudiante solo puede crear solicitudes a su propio nombre.
+create policy "El estudiante crea su propia solicitud"
+  on public.solicitudes_tutor for insert
+  with check (auth.uid() = estudiante_id);
+
+-- El estudiante solo puede ver sus propias solicitudes (no las de los demás).
+create policy "El estudiante ve sus propias solicitudes"
+  on public.solicitudes_tutor for select
+  using (auth.uid() = estudiante_id);
+
+-- Nota: a propósito NO hay policy de update/delete para el estudiante: una vez
+-- enviada, no puede editarla ni auto-aprobarse/rechazarse. Solo un admin con
+-- el service_role key (p. ej. desde un panel interno) debería poder cambiar
+-- `estado`.
+
 -- ============================================================================
 -- SEMILLAS — mismos datos que hoy están hardcodeados en src/App.jsx,
 -- para que la base de datos ya tenga contenido real desde el día uno.
