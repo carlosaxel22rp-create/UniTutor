@@ -59,8 +59,8 @@ function App() {
 
   const semesters = [
     '1er Cuatrimestre', '2do Cuatrimestre', '3er Cuatrimestre',
-    '4to Cuatrimestre', '5to Cuatrimestre', '6to Cuatrimestre',
-    '7mo Cuatrimestre', '8vo Cuatrimestre', '9no Cuatrimestre', '10mo Cuatrimestre'
+    '4to Cuatrimestre', '5to Cuatrimestre',
+    '7mo Cuatrimestre', '8vo Cuatrimestre', '9no Cuatrimestre'
   ];
 
   // Mapa Curricular completo de TI y Genérico para las demás
@@ -111,9 +111,6 @@ function App() {
         { id: 'it5-6', name: 'Estándares y Métricas para el Desarrollo de Software', image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80' },
         { id: 'it5-7', name: 'Proyecto Integrador II', image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400&q=80' },
       ],
-      '6to Cuatrimestre': [
-        { id: 'it6-1', name: 'Estadía (TSU en Desarrollo de Software Multiplataforma)', image: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=400&q=80' },
-      ],
       '7mo Cuatrimestre': [
         { id: 'it7-1', name: 'Inglés VI', image: 'https://images.unsplash.com/photo-1546410531-f?w=400&q=80' },
         { id: 'it7-2', name: 'Habilidades Gerenciales', image: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=400&q=80' },
@@ -141,9 +138,6 @@ function App() {
         { id: 'it9-7', name: 'Optativa III', image: 'https://images.unsplash.com/photo-1513258496099-48168024aec0?w=400&q=80' },
         { id: 'it9-8', name: 'Proyecto Integrador III', image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400&q=80' },
       ],
-      '10mo Cuatrimestre': [
-        { id: 'it10-1', name: 'Estadía (Licenciatura)', image: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=400&q=80' },
-      ]
     },
     generic: [
       { id: 'gen-1', name: 'Materia Troncal 1', image: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=400&q=80' },

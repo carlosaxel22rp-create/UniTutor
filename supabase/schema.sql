@@ -230,7 +230,6 @@ insert into public.subjects (id, career_id, semester, name, image) values
   ('it5-5', 'it', '5to Cuatrimestre', 'Análisis y Diseño de Software', 'https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?w=400&q=80'),
   ('it5-6', 'it', '5to Cuatrimestre', 'Estándares y Métricas para el Desarrollo de Software', 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80'),
   ('it5-7', 'it', '5to Cuatrimestre', 'Proyecto Integrador II', 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400&q=80'),
-  ('it6-1', 'it', '6to Cuatrimestre', 'Estadía (TSU en Desarrollo de Software Multiplataforma)', 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=400&q=80'),
   ('it7-1', 'it', '7mo Cuatrimestre', 'Inglés VI', 'https://images.unsplash.com/photo-1546410531-f?w=400&q=80'),
   ('it7-2', 'it', '7mo Cuatrimestre', 'Habilidades Gerenciales', 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=400&q=80'),
   ('it7-3', 'it', '7mo Cuatrimestre', 'Formulación de Proyectos de Tecnología', 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=400&q=80'),
@@ -252,7 +251,6 @@ insert into public.subjects (id, career_id, semester, name, image) values
   ('it9-6', 'it', '9no Cuatrimestre', 'Informática Forense', 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400&q=80'),
   ('it9-7', 'it', '9no Cuatrimestre', 'Optativa III', 'https://images.unsplash.com/photo-1513258496099-48168024aec0?w=400&q=80'),
   ('it9-8', 'it', '9no Cuatrimestre', 'Proyecto Integrador III', 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400&q=80'),
-  ('it10-1', 'it', '10mo Cuatrimestre', 'Estadía (Licenciatura)', 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=400&q=80'),
   ('gen-1', null, null, 'Materia Troncal 1', 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=400&q=80'),
   ('gen-2', null, null, 'Materia Troncal 2', 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=400&q=80'),
   ('gen-3', null, null, 'Asignatura Especializante', 'https://images.unsplash.com/photo-1513258496099-48168024aec0?w=400&q=80');
