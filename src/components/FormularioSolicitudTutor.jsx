@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BookOpen, Star, Clock, FileText, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { db, auth } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const MIN_CALIFICACION = 8.0;
 const MAX_CALIFICACION = 10.0;
@@ -55,16 +56,18 @@ function FormularioSolicitudTutor({ onBack }) {
 
     setLoading(true);
     try {
-      // estudiante_id lo asigna la base de datos (default auth.uid()); nunca lo
-      // mandamos desde el cliente para que no se pueda suplantar a otro estudiante.
-      const { error: insertError } = await supabase.from('solicitudes_tutor').insert({
+      const user = auth.currentUser;
+      if (!user) throw new Error('Debes iniciar sesión para postularte.');
+
+      await addDoc(collection(db, 'solicitudes_tutor'), {
+        estudiante_id: user.uid,
         materia_principal: materiaPrincipal.trim(),
         calificacion_materia: parseFloat(calificacion),
         disponibilidad_horaria: disponibilidad.trim(),
         descripcion: descripcion.trim(),
+        estado: 'pendiente',
+        created_at: serverTimestamp(),
       });
-
-      if (insertError) throw new Error(insertError.message);
 
       setSuccess(true);
       resetForm();

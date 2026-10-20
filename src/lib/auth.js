@@ -1,17 +1,20 @@
-// Autenticación con Supabase Auth (email+password).
-// La matrícula sigue siendo la identidad "visible" para el usuario: el login
-// pide matrícula+contraseña, y por debajo resolvemos el email registrado
-// (vía RPC get_email_by_matricula) para autenticar con Supabase.
-//
-// Formato real de matrícula: UTOM + 4 dígitos (aleatorios, fijos en longitud) + código de carrera (4 letras)
+// Autenticación con Firebase Auth (email+password) y perfiles en Cloud Firestore.
+// Formato real de matrícula: UTOM + 4 dígitos + código de carrera (4 letras)
 // Ej: UTOM2024TIID  →  UTOM / 2024 / TIID (Tecnologías de la Información)
 // Todo en mayúsculas. Ajusta INSTITUTION_CODE y CAREER_CODES si cambia el prefijo o los códigos de carrera.
 
-import { supabase } from './supabaseClient';
+import { auth, db } from './firebase';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 const INSTITUTION_CODE = 'UTOM';
 
-// Código de 4 letras embebido en la matrícula para cada carrera (debe coincidir con supabase/schema.sql).
+// Código de 4 letras embebido en la matrícula para cada carrera.
 export const CAREER_CODES = {
   it: 'TIID',
   bio: 'BIIO',
@@ -31,8 +34,6 @@ function parseMatricula(matricula) {
   return { value, digits, careerCode };
 }
 
-// careerId es opcional: cuando se pasa, además verifica que el código de
-// carrera embebido en la matrícula corresponda a la carrera seleccionada.
 export function validateMatricula(matricula, careerId) {
   const value = (matricula || '').trim();
 
@@ -71,14 +72,13 @@ function toSession(profile) {
 }
 
 async function fetchProfile(userId) {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('matricula, name, career_id')
-    .eq('id', userId)
-    .single();
+  const docRef = doc(db, 'profiles', userId);
+  const docSnap = await getDoc(docRef);
 
-  if (error) throw new Error('No se pudo cargar el perfil del usuario.');
-  return data;
+  if (!docSnap.exists()) {
+    throw new Error('No se pudo cargar el perfil del usuario.');
+  }
+  return docSnap.data();
 }
 
 export async function registerUser({ name, matricula, career, email, password }) {
@@ -100,82 +100,84 @@ export async function registerUser({ name, matricula, career, email, password })
 
   const normalizedMatricula = matricula.trim().toUpperCase();
 
-  const { data, error } = await supabase.auth.signUp({
-    email: email.trim(),
-    password,
-    options: {
-      data: { matricula: normalizedMatricula, name: name.trim(), career },
-    },
-  });
+  try {
+    // 1. Crear usuario en Firebase Auth
+    const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    const user = userCredential.user;
 
-  if (error) {
-    if (/already registered|already exists/i.test(error.message)) {
+    const profileData = {
+      matricula: normalizedMatricula,
+      name: name.trim(),
+      career_id: career,
+      email: email.trim(),
+    };
+
+    // 2. Guardar el perfil adicional seguro en Cloud Firestore usando el UID del usuario
+    await setDoc(doc(db, 'profiles', user.uid), profileData);
+
+    return toSession(profileData);
+  } catch (error) {
+    if (error.code === 'auth/email-already-in-use') {
       throw new Error('Ya existe una cuenta registrada con ese correo.');
+    }
+    if (error.code === 'auth/invalid-email') {
+      throw new Error('El formato del correo electrónico no es válido.');
     }
     throw new Error(error.message);
   }
-
-  if (!data.user) {
-    throw new Error('No se pudo crear la cuenta.');
-  }
-
-  if (!data.session) {
-    // El proyecto de Supabase tiene activada la confirmación por correo.
-    throw new Error('Cuenta creada. Revisa tu correo para confirmar tu cuenta y luego inicia sesión.');
-  }
-
-  return { matricula: normalizedMatricula, name: name.trim(), career };
 }
 
-export async function loginUser({ matricula, password }) {
-  const matriculaError = validateMatricula(matricula);
-  if (matriculaError) throw new Error(matriculaError);
-
-  const { data: email, error: lookupError } = await supabase.rpc('get_email_by_matricula', {
-    p_matricula: matricula.trim(),
-  });
-
-  if (lookupError || !email) {
-    throw new Error('Matrícula o contraseña incorrectas.');
+export async function loginUser({ email, password }) {
+  if (!email || !email.trim()) {
+    throw new Error('El correo electrónico es obligatorio.');
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    throw new Error('Matrícula o contraseña incorrectas.');
-  }
+  const passwordError = validatePassword(password);
+  if (passwordError) throw new Error(passwordError);
 
-  const profile = await fetchProfile(data.user.id);
-  return toSession(profile);
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+    const profile = await fetchProfile(userCredential.user.uid);
+    return toSession(profile);
+  } catch {
+    throw new Error('Correo o contraseña incorrectas.');
+  }
 }
 
 export async function getSession() {
-  const { data } = await supabase.auth.getSession();
-  if (!data.session) return null;
-
-  try {
-    const profile = await fetchProfile(data.session.user.id);
-    return toSession(profile);
-  } catch {
-    return null;
-  }
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      unsubscribe();
+      if (!user) {
+        resolve(null);
+        return;
+      }
+      try {
+        const profile = await fetchProfile(user.uid);
+        resolve(toSession(profile));
+      } catch {
+        resolve(null);
+      }
+    });
+  });
 }
 
 export function onAuthStateChange(callback) {
-  const { data } = supabase.auth.onAuthStateChange(async (_event, authSession) => {
-    if (!authSession) {
+  const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    if (!user) {
       callback(null);
       return;
     }
     try {
-      const profile = await fetchProfile(authSession.user.id);
+      const profile = await fetchProfile(user.uid);
       callback(toSession(profile));
     } catch {
       callback(null);
     }
   });
-  return data.subscription;
+  return { unsubscribe };
 }
 
 export async function logout() {
-  await supabase.auth.signOut();
+  await signOut(auth);
 }

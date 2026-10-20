@@ -49,7 +49,8 @@ function AuthScreen({ careers, onAuthSuccess }) {
         const session = await registerUser({ name, matricula, career, email, password });
         onAuthSuccess(session);
       } else {
-        const session = await loginUser({ matricula, password });
+        // En login usamos el correo institucional y la contraseña
+        const session = await loginUser({ email, password });
         onAuthSuccess(session);
       }
     } catch (err) {
@@ -104,25 +105,27 @@ function AuthScreen({ careers, onAuthSuccess }) {
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Matrícula</label>
-              <input
-                type="text"
-                value={matricula}
-                onChange={(e) => setMatricula(e.target.value.toUpperCase())}
-                onBlur={() => setMatriculaTouched(true)}
-                placeholder="Ej. UTOM2024TIID"
-                className={`w-full bg-slate-800/60 border rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-500 outline-none transition-colors ${
-                  matriculaError ? 'border-red-500 focus:border-red-500' : 'border-slate-700 focus:border-blue-500'
-                }`}
-                required
-              />
-              {matriculaError && (
-                <p className="flex items-center gap-1.5 text-xs text-red-400 mt-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {matriculaError}
-                </p>
-              )}
-            </div>
+            {mode === 'register' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Matrícula</label>
+                <input
+                  type="text"
+                  value={matricula}
+                  onChange={(e) => setMatricula(e.target.value.toUpperCase())}
+                  onBlur={() => setMatriculaTouched(true)}
+                  placeholder="Ej. UTOM2024TIID"
+                  className={`w-full bg-slate-800/60 border rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-500 outline-none transition-colors ${
+                    matriculaError ? 'border-red-500 focus:border-red-500' : 'border-slate-700 focus:border-blue-500'
+                  }`}
+                  required
+                />
+                {matriculaError && (
+                  <p className="flex items-center gap-1.5 text-xs text-red-400 mt-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {matriculaError}
+                  </p>
+                )}
+              </div>
+            )}
 
             {mode === 'register' && (
               <div>
@@ -148,19 +151,17 @@ function AuthScreen({ careers, onAuthSuccess }) {
               </div>
             )}
 
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Correo institucional</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu.nombre@utom.edu.mx"
-                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-500 outline-none focus:border-blue-500 transition-colors"
-                  required
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Correo institucional</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu.nombre@utom.edu.mx"
+                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-500 outline-none focus:border-blue-500 transition-colors"
+                required
+              />
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">Contraseña</label>
