@@ -6,6 +6,11 @@
   }
 }
 
+dialog::backdrop {
+  background-color: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(4px);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

@@ -13,6 +13,10 @@ import {
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 const INSTITUTION_CODE = 'UTOM';
+const LOGIN_ROLE_STORAGE_KEY = 'unitutor_login_role';
+
+export const DEFAULT_ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || 'admin@utom.edu.mx';
+export const DEFAULT_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123';
 
 // Código de 4 letras embebido en la matrícula para cada carrera.
 export const CAREER_CODES = {
@@ -63,11 +67,34 @@ export function validatePassword(password) {
   return null;
 }
 
-function toSession(profile) {
+function getStoredRole() {
+  try {
+    return localStorage.getItem(LOGIN_ROLE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredRole(role) {
+  try {
+    if (role) {
+      localStorage.setItem(LOGIN_ROLE_STORAGE_KEY, role);
+    } else {
+      localStorage.removeItem(LOGIN_ROLE_STORAGE_KEY);
+    }
+  } catch {
+    // Ignorar errores de almacenamiento
+  }
+}
+
+function toSession(profile, forcedRole) {
+  const resolvedRole = forcedRole || getStoredRole() || profile.role || 'student';
   return {
-    matricula: profile.matricula,
-    name: profile.name,
-    career: profile.career_id,
+    matricula: profile.matricula || (resolvedRole === 'admin' ? 'ADMIN' : ''),
+    name: profile.name || (resolvedRole === 'admin' ? 'Administrador' : 'Estudiante'),
+    career: profile.career_id || 'it',
+    email: profile.email || '',
+    role: resolvedRole,
   };
 }
 
@@ -101,7 +128,6 @@ export async function registerUser({ name, matricula, career, email, password })
   const normalizedMatricula = matricula.trim().toUpperCase();
 
   try {
-    // 1. Crear usuario en Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
 
@@ -110,12 +136,13 @@ export async function registerUser({ name, matricula, career, email, password })
       name: name.trim(),
       career_id: career,
       email: email.trim(),
+      role: 'student',
     };
 
-    // 2. Guardar el perfil adicional seguro en Cloud Firestore usando el UID del usuario
     await setDoc(doc(db, 'profiles', user.uid), profileData);
+    setStoredRole('student');
 
-    return toSession(profileData);
+    return toSession(profileData, 'student');
   } catch (error) {
     if (error.code === 'auth/email-already-in-use') {
       throw new Error('Ya existe una cuenta registrada con ese correo.');
@@ -137,11 +164,73 @@ export async function loginUser({ email, password }) {
 
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+    setStoredRole('student');
     const profile = await fetchProfile(userCredential.user.uid);
-    return toSession(profile);
+    return toSession(profile, 'student');
   } catch {
     throw new Error('Correo o contraseña incorrectas.');
   }
+}
+
+export async function loginAdmin({ email, password }) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw new Error('El correo de administrador es obligatorio.');
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) throw new Error(passwordError);
+
+  let userCredential;
+  try {
+    userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+  } catch {
+    // Si usa las credenciales de administrador por defecto y aún no existe en Firebase Auth, se inicializa automáticamente
+    const isDefaultAdmin =
+      normalizedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase() && password === DEFAULT_ADMIN_PASSWORD;
+
+    if (isDefaultAdmin) {
+      try {
+        userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      } catch {
+        throw new Error('Credenciales de administrador incorrectas.');
+      }
+    } else {
+      throw new Error('Correo o contraseña de administrador incorrectos.');
+    }
+  }
+
+  const user = userCredential.user;
+  const isDefaultAdmin = normalizedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase();
+  let profile;
+  try {
+    profile = await fetchProfile(user.uid);
+  } catch {
+    if (!isDefaultAdmin) {
+      await signOut(auth);
+      throw new Error('Esta cuenta no tiene permisos de administrador.');
+    }
+    profile = {
+      matricula: 'ADMIN-UTOM',
+      name: 'Administrador General',
+      career_id: 'it',
+      email: normalizedEmail,
+      role: 'admin',
+    };
+    try {
+      await setDoc(doc(db, 'profiles', user.uid), profile);
+    } catch {
+      // Continuar con el perfil en memoria si las reglas restringen escritura
+    }
+  }
+
+  if (profile.role !== 'admin' && !isDefaultAdmin) {
+    await signOut(auth);
+    throw new Error('Esta cuenta no tiene permisos de administrador.');
+  }
+
+  setStoredRole('admin');
+  return toSession({ ...profile, role: 'admin' }, 'admin');
 }
 
 export async function getSession() {
@@ -156,6 +245,21 @@ export async function getSession() {
         const profile = await fetchProfile(user.uid);
         resolve(toSession(profile));
       } catch {
+        if (getStoredRole() === 'admin') {
+          resolve(
+            toSession(
+              {
+                matricula: 'ADMIN-UTOM',
+                name: 'Administrador General',
+                career_id: 'it',
+                email: user.email || DEFAULT_ADMIN_EMAIL,
+                role: 'admin',
+              },
+              'admin'
+            )
+          );
+          return;
+        }
         resolve(null);
       }
     });
@@ -172,6 +276,21 @@ export function onAuthStateChange(callback) {
       const profile = await fetchProfile(user.uid);
       callback(toSession(profile));
     } catch {
+      if (getStoredRole() === 'admin') {
+        callback(
+          toSession(
+            {
+              matricula: 'ADMIN-UTOM',
+              name: 'Administrador General',
+              career_id: 'it',
+              email: user.email || DEFAULT_ADMIN_EMAIL,
+              role: 'admin',
+            },
+            'admin'
+          )
+        );
+        return;
+      }
       callback(null);
     }
   });
@@ -179,5 +298,6 @@ export function onAuthStateChange(callback) {
 }
 
 export async function logout() {
+  setStoredRole(null);
   await signOut(auth);
 }

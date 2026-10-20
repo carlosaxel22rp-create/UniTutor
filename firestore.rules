@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'admin@utom.edu.mx' ||
+        (
+          exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
+    }
+
+    // Perfiles de estudiantes y administradores
+    match /profiles/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Solicitudes para ser tutor
+    match /solicitudes_tutor/{solicitudId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.estudiante_id == request.auth.uid;
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.estudiante_id == request.auth.uid &&
+        request.resource.data.estado == resource.data.estado
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Catálogo universitario: carreras, materias y tutores
+    match /careers/{careerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /subjects/{subjectId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /tutors/{tutorId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow read, create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+  }
+}
