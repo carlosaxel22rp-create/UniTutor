@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --open",
+    "dev": "concurrently -n FRONT,BACK -c cyan,green \"npm run dev:front\" \"npm run dev:back\"",
+    "dev:front": "vite --open",
+    "dev:back": "cd backend && .venv\\Scripts\\python -m uvicorn main:app --reload --port 8000",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"
@@ -21,6 +23,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.1",
+    "concurrently": "^10.0.7",
     "oxlint": "^1.81.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
