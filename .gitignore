@@ -23,3 +23,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+backend/serviceAccountKey.json
+.venv/
+__pycache__/
+# Backend Python y credenciales privadas
+backend/.venv/
+backend/__pycache__/
+backend/serviceAccountKey.json

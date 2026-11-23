@@ -21,11 +21,11 @@ import {
   collection,
   getDocs,
   doc,
-  updateDoc,
   setDoc,
   deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { apiRequest } from '../lib/api';
 import ConstanciaModal from './ConstanciaModal';
 import {
   careers,
@@ -174,16 +174,23 @@ function AdminDashboard() {
     };
   }, []);
 
+  // Conectado a FastAPI (transacción atómica en solicitudes_tutor, profiles y tutors)
   const handleUpdateEstado = async (solicitudId, nuevoEstado) => {
     setUpdatingId(solicitudId);
     setError('');
     try {
-      await updateDoc(doc(db, 'solicitudes_tutor', solicitudId), {
+      await apiRequest('/api/admin/solicitudes', 'POST', {
+        solicitud_id: solicitudId,
         estado: nuevoEstado,
       });
-      setSolicitudes((prev) =>
-        prev.map((item) => (item.id === solicitudId ? { ...item, estado: nuevoEstado } : item))
-      );
+
+      const { map, students, reqItems, subjectsFromFirestore, tutorsFromFirestore } =
+        await loadFirestoreCollections();
+      setProfilesMap(map);
+      setProfilesList(students);
+      setSolicitudes(reqItems);
+      setDbSubjects(subjectsFromFirestore);
+      setDbTutors(tutorsFromFirestore);
     } catch (err) {
       setError(err.message || 'No se pudo actualizar el estado de la solicitud.');
     } finally {
@@ -234,7 +241,11 @@ function AdminDashboard() {
   // Estadísticas generales
   const totalPendientes = solicitudes.filter((s) => (s.estado || 'pendiente') === 'pendiente').length;
   const solicitudesAprobadas = solicitudes.filter((s) => s.estado === 'aprobado');
-  const totalTutorsCatalog = dbTutors.length > 0 ? dbTutors : baseTutors;
+  const approvedStudentIds = new Set(solicitudesAprobadas.map((s) => s.estudiante_id));
+  const extraDbTutors = dbTutors.filter(
+    (t) => !approvedStudentIds.has(t.id) && !approvedStudentIds.has(t.uid)
+  );
+  const totalTutorsCatalog = [...baseTutors, ...extraDbTutors];
   const totalSubjectsCount = dbSubjects.length > 0 ? dbSubjects.length : getAllSubjectsFlat().length;
 
   // Enriquecer solicitud con datos del perfil del estudiante
@@ -330,7 +341,7 @@ function AdminDashboard() {
             Gestión de Tutores, Materias y Alumnos
           </h1>
           <p className="text-slate-400 text-sm md:text-base mt-1">
-            Conectado en vivo con Cloud Firestore: revisa postulaciones, materias de las 4 carreras y estudiantes registrados.
+            Conectado en vivo con Cloud Firestore y FastAPI: revisa postulaciones, materias de las 4 carreras y estudiantes registrados.
           </p>
         </div>
 
@@ -1084,7 +1095,7 @@ function AdminDashboard() {
               .filter((t) =>
                 !directorySearch.trim()
                   ? true
-                  : t.name.toLowerCase().includes(directorySearch.toLowerCase())
+                  : (t.name || '').toLowerCase().includes(directorySearch.toLowerCase())
               )
               .map((tutor) => (
                 <div
