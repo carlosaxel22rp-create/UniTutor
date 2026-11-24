@@ -16,9 +16,8 @@ import {
   Eye,
   AlertCircle,
   Video,
-  MapPin,
 } from 'lucide-react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db, auth } from './lib/firebase';
 import { apiRequest } from './lib/api';
 import AuthScreen from './components/AuthScreen';
@@ -33,6 +32,38 @@ import {
   getDynamicTutorsForSubject,
 } from './lib/catalogData';
 
+const DEFAULT_DAYS = ['Lunes', 'Miércoles', 'Viernes'];
+const DEFAULT_HOURS = ['04:00 PM'];
+
+function parseTutorSchedule(req) {
+  const days =
+    Array.isArray(req.dias_disponibles) && req.dias_disponibles.length > 0
+      ? req.dias_disponibles
+      : DEFAULT_DAYS;
+
+  let hours =
+    Array.isArray(req.horarios_disponibles) && req.horarios_disponibles.length > 0
+      ? req.horarios_disponibles
+      : null;
+
+  // Respaldo para solicitudes aprobadas anteriormente con texto libre
+  if (!hours) {
+    if (req.disponibilidad_horaria) {
+      const parts = req.disponibilidad_horaria.split('•');
+      const rawHours = parts.length > 1 ? parts[1] : req.disponibilidad_horaria;
+      const parsed = rawHours
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean);
+      hours = parsed.length > 0 ? parsed : DEFAULT_HOURS;
+    } else {
+      hours = DEFAULT_HOURS;
+    }
+  }
+
+  return { days, hours };
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -44,12 +75,12 @@ function App() {
   const [dbSubjects, setDbSubjects] = useState([]);
   const [approvedRequests, setApprovedRequests] = useState([]);
   const [profilesById, setProfilesById] = useState({});
+  const [pendingBookingsCount, setPendingBookingsCount] = useState(0);
   const [constanciaModalTutor, setConstanciaModalTutor] = useState(null);
 
-  // Estados para agendar tutoría vía FastAPI
-  const [selectedDay, setSelectedDay] = useState('Lun 12');
+  // Estados para agendar tutoría virtual vía FastAPI
+  const [selectedDay, setSelectedDay] = useState('');
   const [selectedHour, setSelectedHour] = useState('');
-  const [selectedModalidad, setSelectedModalidad] = useState('Virtual');
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(null);
@@ -69,13 +100,17 @@ function App() {
   useEffect(() => {
     if (!session || session.role === 'admin') return;
     let active = true;
+    const uid = auth.currentUser?.uid;
 
     Promise.all([
       getDocs(collection(db, 'subjects')),
       getDocs(collection(db, 'solicitudes_tutor')),
       getDocs(collection(db, 'profiles')),
+      uid
+        ? getDocs(query(collection(db, 'bookings'), where('tutor_id', '==', uid)))
+        : Promise.resolve(null),
     ])
-      .then(([subjectsSnap, reqSnap, profilesSnap]) => {
+      .then(([subjectsSnap, reqSnap, profilesSnap, bookingsSnap]) => {
         if (!active) return;
         const subs = [];
         subjectsSnap.forEach((d) => subs.push({ id: d.id, ...d.data() }));
@@ -95,6 +130,14 @@ function App() {
           }
         });
         setApprovedRequests(approved);
+
+        if (bookingsSnap) {
+          let pending = 0;
+          bookingsSnap.forEach((d) => {
+            if (d.data().estado === 'pendiente') pending += 1;
+          });
+          setPendingBookingsCount(pending);
+        }
       })
       .catch(() => {
         // Si falla la red se mantiene el catálogo base
@@ -158,16 +201,26 @@ function App() {
   };
 
   const handleTutorSelect = (tutor) => {
-    setSelectedTutor(tutor);
-    setSelectedDay('Lun 12');
-    setSelectedHour(tutor?.hours?.[0] || '');
-    setSelectedModalidad('Virtual');
+    const tutorDays = tutor?.days?.length > 0 ? tutor.days : DEFAULT_DAYS;
+    const tutorHours = tutor?.hours?.length > 0 ? tutor.hours : DEFAULT_HOURS;
+
+    setSelectedTutor({
+      ...tutor,
+      days: tutorDays,
+      hours: tutorHours,
+    });
+    setSelectedDay(tutorDays[0]);
+    setSelectedHour(tutorHours[0]);
     setBookingError('');
     setBookingSuccess(null);
   };
 
   const handleConfirmBooking = async () => {
     if (!selectedTutor || !selectedSubject) return;
+    if (!selectedDay) {
+      setBookingError('Selecciona un día disponible antes de confirmar.');
+      return;
+    }
     if (!selectedHour) {
       setBookingError('Selecciona un horario disponible antes de confirmar.');
       return;
@@ -187,14 +240,15 @@ function App() {
       const result = await apiRequest('/api/bookings', 'POST', {
         tutor_id: tutorId,
         subject_id: subjectId,
+        subject_name: selectedSubject.name,
         fecha_hora: fechaHora,
-        modalidad: selectedModalidad,
+        modalidad: 'Virtual',
       });
 
       setBookingSuccess({
         bookingId: result.booking_id,
         fechaHora,
-        modalidad: selectedModalidad,
+        modalidad: 'Virtual',
       });
     } catch (err) {
       setBookingError(err.message || 'No se pudo agendar la tutoría.');
@@ -209,6 +263,7 @@ function App() {
   const getDynamicTutors = () => {
     const base = getDynamicTutorsForSubject(selectedSubject, selectedCareer).map((t) => ({
       ...t,
+      days: t.days || DEFAULT_DAYS,
       promedio_general: t.rating,
       calificacion_materia: Math.min(10, Number((t.rating + 0.1).toFixed(1))),
       hasVerifiedConstancia: true,
@@ -229,6 +284,7 @@ function App() {
         const constanciaTipo = req.constancia_tipo || profile.constancia_tipo || '';
         const promedioGeneral =
           req.promedio_general || profile.promedio_general || req.calificacion_materia || 9.5;
+        const { days, hours } = parseTutorSchedule(req);
 
         return {
           uniqueId: `approved-${req.id}`,
@@ -246,7 +302,8 @@ function App() {
               ?.name || 'Universidad',
           description: req.descripcion,
           subjects: [selectedSubject.name],
-          hours: [req.disponibilidad_horaria || '04:00 PM'],
+          days,
+          hours,
           constancia_url: constanciaUrl,
           constancia_nombre: constanciaNombre,
           constancia_tipo: constanciaTipo,
@@ -287,6 +344,11 @@ function App() {
               {isCurrentStudentApprovedTutor ? (
                 <>
                   <FileCheck2 className="w-4 h-4" /> Mi perfil de tutor
+                  {pendingBookingsCount > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 text-[10px] font-extrabold bg-orange-500 text-white rounded-full">
+                      {pendingBookingsCount}
+                    </span>
+                  )}
                 </>
               ) : (
                 <>
@@ -331,7 +393,7 @@ function App() {
               <div className="mb-16 animate-fade-in">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 mb-6">
                   <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                  <span className="text-xs font-medium text-slate-300">Tutores nuevos cada semana</span>
+                  <span className="text-xs font-medium text-slate-300">Asesorías virtuales entre compañeros</span>
                 </div>
 
                 <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-4 tracking-tight">
@@ -342,7 +404,7 @@ function App() {
                 </h1>
 
                 <p className="text-lg text-slate-400 max-w-2xl mb-10">
-                  Tutorías entre compañeros para tu universidad. Aprende de estudiantes que ya pasaron la materia.
+                  Tutorías virtuales entre compañeros para tu universidad. Aprende de estudiantes que ya pasaron la materia.
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-3 max-w-2xl">
@@ -514,7 +576,7 @@ function App() {
                             </div>
                           </div>
                         ) : (
-                          // 3. VISTA DE PERFIL DEL TUTOR CON CREDIBILIDAD ACADÉMICA Y AGENDA
+                          // 3. VISTA DE PERFIL DEL TUTOR CON CREDIBILIDAD ACADÉMICA Y AGENDA VIRTUAL
                           <div className="animate-fade-in">
                             <button
                               type="button"
@@ -569,7 +631,7 @@ function App() {
                                       <strong className="text-white text-sm">
                                         {Number(selectedTutor.promedio_general || selectedTutor.rating).toFixed(1)} / 10
                                       </strong>{' '}
-                                      - Calificación en {selectedSubject?.name}:{' '}
+                                      • Calificación en {selectedSubject?.name}:{' '}
                                       <strong className="text-white text-sm">
                                         {Number(selectedTutor.calificacion_materia || selectedTutor.rating).toFixed(1)} / 10
                                       </strong>
@@ -611,89 +673,75 @@ function App() {
                                 </div>
                               </div>
 
-                              {/* PANEL DE RESERVA CONECTADO A FASTAPI */}
+                              {/* PANEL DE RESERVA VIRTUAL CON HORARIOS DEL TUTOR */}
                               <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 h-fit sticky top-24">
-                                <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                                  <CalendarDays className="w-5 h-5 text-orange-500" /> Agendar Tutoría
-                                </h3>
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <CalendarDays className="w-5 h-5 text-orange-500" /> Agendar Tutoría
+                                  </h3>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[11px] font-bold">
+                                    <Video className="w-3 h-3" /> Virtual
+                                  </span>
+                                </div>
                                 <p className="text-sm text-slate-400 mb-5">
-                                  Selecciona día, modalidad y horario disponible.
+                                  Selecciona uno de los días y horarios registrados por {selectedTutor.name}.
                                 </p>
 
-                                {/* Selector de modalidad */}
-                                <div className="grid grid-cols-2 gap-2 mb-4 bg-slate-900/50 rounded-xl p-1.5">
-                                  {[
-                                    { id: 'Virtual', icon: Video },
-                                    { id: 'Presencial', icon: MapPin },
-                                  ].map((mod) => {
-                                    const ModIcon = mod.icon;
-                                    const active = selectedModalidad === mod.id;
-                                    return (
+                                {/* Selector dinámico de días del tutor */}
+                                <div className="mb-4">
+                                  <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                    Días disponibles
+                                  </span>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-900/50 rounded-xl p-2">
+                                    {(selectedTutor.days || DEFAULT_DAYS).map((day) => (
                                       <button
-                                        key={mod.id}
+                                        key={day}
                                         type="button"
                                         onClick={() => {
-                                          setSelectedModalidad(mod.id);
-                                          setBookingError('');
-                                        }}
-                                        className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                                          active
-                                            ? 'bg-blue-600 text-white shadow'
-                                            : 'text-slate-400 hover:text-white'
-                                        }`}
-                                      >
-                                        <ModIcon className="w-3.5 h-3.5" />
-                                        {mod.id}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-
-                                {/* Selector de día */}
-                                <div className="flex justify-between items-center mb-4 bg-slate-900/50 rounded-xl p-2">
-                                  {['Lun 12', 'Mar 13', 'Mié 14'].map((day) => (
-                                    <button
-                                      key={day}
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedDay(day);
-                                        setBookingError('');
-                                        setBookingSuccess(null);
-                                      }}
-                                      className={`flex-1 py-2 text-center rounded-lg text-sm font-medium transition-colors ${
-                                        selectedDay === day
-                                          ? 'bg-slate-700 text-white shadow'
-                                          : 'text-slate-400 hover:text-white'
-                                      }`}
-                                    >
-                                      {day}
-                                    </button>
-                                  ))}
-                                </div>
-
-                                {/* Selector de horarios */}
-                                <div className="grid grid-cols-2 gap-3 mb-6">
-                                  {selectedTutor.hours.map((hour) => {
-                                    const isHourSelected = selectedHour === hour;
-                                    return (
-                                      <button
-                                        key={hour}
-                                        type="button"
-                                        onClick={() => {
-                                          setSelectedHour(hour);
+                                          setSelectedDay(day);
                                           setBookingError('');
                                           setBookingSuccess(null);
                                         }}
-                                        className={`flex items-center justify-center gap-2 py-3 border rounded-xl text-sm font-medium transition-all ${
-                                          isHourSelected
-                                            ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20'
-                                            : 'bg-slate-700/50 hover:bg-orange-500/20 border-slate-600 hover:border-orange-500 text-slate-200'
+                                        className={`py-2 px-2 text-center rounded-lg text-xs font-semibold transition-colors ${
+                                          selectedDay === day
+                                            ? 'bg-blue-600 text-white shadow'
+                                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
                                         }`}
                                       >
-                                        <Clock className="w-4 h-4" /> {hour}
+                                        {day}
                                       </button>
-                                    );
-                                  })}
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Selector dinámico de horarios del tutor */}
+                                <div className="mb-6">
+                                  <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                    Horarios disponibles
+                                  </span>
+                                  <div className="grid grid-cols-2 gap-2.5">
+                                    {(selectedTutor.hours || DEFAULT_HOURS).map((hour) => {
+                                      const isHourSelected = selectedHour === hour;
+                                      return (
+                                        <button
+                                          key={hour}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedHour(hour);
+                                            setBookingError('');
+                                            setBookingSuccess(null);
+                                          }}
+                                          className={`flex items-center justify-center gap-2 py-3 px-2 border rounded-xl text-xs font-semibold transition-all ${
+                                            isHourSelected
+                                              ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20'
+                                              : 'bg-slate-700/50 hover:bg-orange-500/20 border-slate-600 hover:border-orange-500 text-slate-200'
+                                          }`}
+                                        >
+                                          <Clock className="w-3.5 h-3.5 shrink-0" /> {hour}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
 
                                 {bookingError && (
@@ -707,10 +755,10 @@ function App() {
                                   <div className="mb-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl p-3.5 space-y-1">
                                     <p className="font-bold flex items-center gap-1.5">
                                       <CheckCircle2 className="w-4 h-4 shrink-0" />
-                                      ¡Tutoría agendada con éxito!
+                                      ¡Tutoría virtual agendada con éxito!
                                     </p>
                                     <p className="text-slate-300">
-                                      {bookingSuccess.fechaHora} ({bookingSuccess.modalidad})
+                                      {bookingSuccess.fechaHora} (Modalidad {bookingSuccess.modalidad})
                                     </p>
                                     <p className="text-[11px] text-slate-400 font-mono">
                                       Folio: {bookingSuccess.bookingId}
@@ -724,7 +772,7 @@ function App() {
                                   onClick={handleConfirmBooking}
                                   className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex justify-center items-center gap-2"
                                 >
-                                  {bookingLoading ? 'Agendando...' : 'Confirmar Tutoría'}
+                                  {bookingLoading ? 'Agendando...' : 'Confirmar Tutoría Virtual'}
                                 </button>
                                 <p className="text-center text-xs text-slate-500 mt-4 flex items-center justify-center gap-1">
                                   <CheckCircle2 className="w-3 h-3" /> Registro verificado en UniTutor
